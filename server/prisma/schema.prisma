@@ -1,0 +1,236 @@
+// ============================================================================
+// ElimuPopote — Prisma Schema
+// ----------------------------------------------------------------------------
+// MULTI-TENANCY STRATEGY
+// Every tenant-scoped table carries a `tenantId` column. We rely on TWO
+// layers of isolation:
+//   1) Application layer: every Prisma query in the Express API is wrapped
+//      by `tenantScope` middleware which injects `where: { tenantId }`
+//      automatically (see src/middleware/tenantScope.ts).
+//   2) Database layer: Postgres Row Level Security (RLS) policies (written
+//      as raw SQL in supabase/migrations/0001_init_rls.sql) act as the last
+//      line of defense in case the app layer ever forgets to scope a query
+//      (e.g. a bug, or a future direct-from-client Supabase query using the
+//      anon/authenticated key). RLS reads the tenant id out of the JWT claim
+//      `app_metadata.tenant_id` that we set when minting tokens.
+//
+// SUPERADMIN is the only role that is NOT tenant-scoped — it manages the
+// `Tenant` table itself (creating tenants, disabling them, raising seat
+// limits). Superadmin users have `tenantId = null`.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum Role {
+  SUPERADMIN
+  TENANT_ADMIN
+  INSTRUCTOR
+  LEARNER
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ----------------------------------------------------------------------------
+// TENANT
+// Each tenant = one company buying seats for their employees.
+// seatsLimit is increased by the mock M-Pesa payment endpoint.
+// ----------------------------------------------------------------------------
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  seatsLimit  Int      @default(5) // free trial seats
+  isActive    Boolean  @default(true) // Superadmin can disable a tenant
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  courses       Course[]
+  enrollments   Enrollment[]
+
+  @@map("tenants")
+}
+
+// ----------------------------------------------------------------------------
+// USER
+// tenantId is NULL only for SUPERADMIN accounts.
+// Auth identity (phone OTP) lives in Supabase Auth; `authUserId` links the
+// Supabase auth.users.id (uuid) to our local profile row.
+// ----------------------------------------------------------------------------
+model User {
+  id          String   @id @default(uuid())
+  authUserId  String   @unique // Supabase auth.users.id
+  tenantId    String?  // null for SUPERADMIN
+  phone       String   @unique
+  fullName    String
+  role        Role     @default(LEARNER)
+  createdAt   DateTime @default(now())
+
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
+  coursesMade  Course[]      @relation("InstructorCourses")
+  enrollments  Enrollment[]
+  progress     Progress[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ----------------------------------------------------------------------------
+// COURSE
+// ----------------------------------------------------------------------------
+model Course {
+  id          String       @id @default(uuid())
+  tenantId    String
+  instructorId String
+  title       String
+  description String
+  language    String       @default("en") // "en" | "sw" — language the AI generated/authored in
+  status      CourseStatus @default(DRAFT)
+  learningObjectives String[] @default([])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  instructor  User          @relation("InstructorCourses", fields: [instructorId], references: [id])
+  lessons     Lesson[]
+  liveSessions LiveSession[]
+  enrollments Enrollment[]
+
+  @@index([tenantId])
+  @@map("courses")
+}
+
+// ----------------------------------------------------------------------------
+// LESSON + QUIZ + QUIZ OPTION
+// ----------------------------------------------------------------------------
+model Lesson {
+  id        String   @id @default(uuid())
+  tenantId  String   // duplicated for RLS simplicity / fast filtering
+  courseId  String
+  title     String
+  content   String   // markdown / plain text micro-lesson body
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz      Quiz?
+  progress  Progress[]
+
+  @@index([tenantId])
+  @@index([courseId])
+  @@map("lessons")
+}
+
+model Quiz {
+  id        String @id @default(uuid())
+  tenantId  String
+  lessonId  String @unique
+
+  lesson    Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+
+  @@index([tenantId])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id           String @id @default(uuid())
+  tenantId     String
+  quizId       String
+  question     String
+  correctIndex Int
+  order        Int    @default(0)
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options QuizOption[]
+
+  @@index([tenantId])
+  @@map("quiz_questions")
+}
+
+model QuizOption {
+  id         String @id @default(uuid())
+  tenantId   String
+  questionId String
+  text       String
+  order      Int    @default(0)
+
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("quiz_options")
+}
+
+// ----------------------------------------------------------------------------
+// ENROLLMENT — links a LEARNER to a COURSE within a tenant
+// ----------------------------------------------------------------------------
+model Enrollment {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String
+  courseId   String
+  enrolledAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@index([tenantId])
+  @@map("enrollments")
+}
+
+// ----------------------------------------------------------------------------
+// PROGRESS — one row per (user, lesson). Updated by the offline sync queue.
+// `clientUpdatedAt` is the timestamp set ON THE DEVICE at the moment of the
+// quiz attempt; it is what we use for last-write-wins conflict resolution
+// (NOT the server's `updatedAt`, which only reflects when sync occurred).
+// ----------------------------------------------------------------------------
+model Progress {
+  id              String   @id @default(uuid())
+  tenantId        String
+  userId          String
+  lessonId        String
+  completed       Boolean  @default(false)
+  score           Int?     // percentage 0-100, null if lesson has no quiz
+  clientUpdatedAt DateTime // device-side timestamp, used for LWW conflict resolution
+  updatedAt       DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, lessonId])
+  @@index([tenantId])
+  @@index([userId, updatedAt]) // powers the "at-risk learner" analytics query
+  @@map("progress")
+}
+
+// ----------------------------------------------------------------------------
+// LIVE SESSION — placeholder for Zoom/Meet links
+// ----------------------------------------------------------------------------
+model LiveSession {
+  id          String   @id @default(uuid())
+  tenantId    String
+  courseId    String
+  title       String
+  datetime    DateTime
+  meetingLink String
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("live_sessions")
+}
