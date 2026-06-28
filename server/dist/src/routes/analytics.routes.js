@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_1 = require("../middleware/auth");
+const tenantScope_1 = require("../middleware/tenantScope");
+const analytics_controller_1 = require("../controllers/analytics.controller");
+const router = (0, express_1.Router)();
+router.use(auth_1.authenticate, tenantScope_1.tenantScope, (0, auth_1.requireRole)("TENANT_ADMIN"));
+router.get("/overview", analytics_controller_1.getOverview);
+router.get("/at-risk", analytics_controller_1.getAtRiskLearners);
+router.post("/at-risk/:userId/alert", analytics_controller_1.sendAtRiskAlert);
+exports.default = router;
