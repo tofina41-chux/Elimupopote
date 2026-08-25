@@ -5,42 +5,24 @@ import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { useAuthContext } from "../context/AuthContext";
 
-// Two-step phone OTP login. In this MVP the OTP is always "123456" (see
-// server/src/services/supabaseAuth.service.ts) so the demo never depends on
-// a real SMS provider being configured.
 export function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuthContext();
 
-  const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSendOtp() {
+  async function handleSignIn() {
     setError(null);
     setLoading(true);
     try {
-      await apiClient.post("/api/auth/request-otp", { phone });
-      setStep("otp");
-    } catch {
-      setError(t("common.error"));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerify() {
-    setError(null);
-    setLoading(true);
-    try {
-      const { data } = await apiClient.post("/api/auth/verify-otp", { phone, otp });
+      const { data } = await apiClient.post("/api/auth/login", { phone: phone.trim() });
       login(data.token, data.user);
       navigate("/");
-    } catch {
-      setError(t("common.error"));
+    } catch (error: any) {
+      setError(error?.response?.data?.error || t("common.error"));
     } finally {
       setLoading(false);
     }
@@ -57,34 +39,15 @@ export function Login() {
             {t("app.tagline")}
           </Text>
 
-          {step === "phone" ? (
-            <>
-              <TextInput
-                label={t("login.phoneLabel")}
-                placeholder={t("login.phonePlaceholder")}
-                value={phone}
-                onChange={(e) => setPhone(e.currentTarget.value)}
-              />
-              <Button onClick={handleSendOtp} loading={loading} disabled={!phone}>
-                {t("login.sendOtp")}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Text size="sm" c="dimmed">
-                {t("login.otpSentHint")}
-              </Text>
-              <TextInput
-                label={t("login.otpLabel")}
-                value={otp}
-                onChange={(e) => setOtp(e.currentTarget.value)}
-                maxLength={6}
-              />
-              <Button onClick={handleVerify} loading={loading} disabled={otp.length !== 6}>
-                {t("login.verify")}
-              </Button>
-            </>
-          )}
+          <TextInput
+            label={t("login.phoneLabel")}
+            placeholder={t("login.phonePlaceholder")}
+            value={phone}
+            onChange={(e) => setPhone(e.currentTarget.value)}
+          />
+          <Button onClick={handleSignIn} loading={loading} disabled={!phone}>
+            {t("login.submit")}
+          </Button>
 
           {error && (
             <Text c="red" size="sm">
