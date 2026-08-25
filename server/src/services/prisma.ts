@@ -1,14 +1,15 @@
-// Singleton Prisma client. Importing this file anywhere always returns the
-// same client instance, which is important in dev (ts-node-dev / nodemon
-// hot-reload) to avoid exhausting Postgres connections.
 import { PrismaClient } from "@prisma/client";
+import { withAccelerate } from "@prisma/extension-accelerate";
 
 declare global {
-  // eslint-disable-next-line no-var
-  var __prisma: PrismaClient | undefined;
+  var __prisma: any;
 }
 
-export const prisma = global.__prisma ?? new PrismaClient();
+export const prisma =
+  global.__prisma ??
+  new PrismaClient({
+    datasourceUrl: process.env.DATABASE_URL,
+  }).$extends(withAccelerate());
 
 if (process.env.NODE_ENV !== "production") {
   global.__prisma = prisma;

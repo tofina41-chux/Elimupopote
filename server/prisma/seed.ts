@@ -194,7 +194,7 @@ async function main() {
     tenant: tenant.name,
     course: course.title,
   });
-  console.log("ℹ️  Use OTP code 123456 to log in as any of the above phone numbers.");
+  console.log("ℹ️  Use any of the seeded phone numbers above to log in.");
 }
 
 main()

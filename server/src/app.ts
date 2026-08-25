@@ -8,12 +8,13 @@ import coursesRoutes from "./routes/courses.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import paymentRoutes from "./routes/payment.routes";
 import syncRoutes from "./routes/sync.routes";
+import { databaseAvailable } from "./services/prisma";
 
 // ============================================================================
 // ElimuPopote API — Express app
 // ----------------------------------------------------------------------------
 // Route mounting overview (see each routes/*.ts file for per-endpoint auth):
-//   /api/auth        — phone OTP login (public, mocked)
+//   /api/auth        — phone login (public, mocked)
 //   /api/tenants     — SUPERADMIN only: create/disable tenants, seat limits
 //   /api/courses     — INSTRUCTOR (AI generation + authoring) & LEARNER (read)
 //   /api/analytics   — TENANT_ADMIN only: overview + at-risk learners
@@ -37,7 +38,13 @@ export function createApp() {
   app.use(express.json({ limit: "2mb" })); // generous limit: AI-generated course payloads can be sizable
   app.use(morgan("dev"));
 
-  app.get("/api/health", (_req, res) => res.json({ status: "ok", service: "elimupopote-api" }));
+  app.get("/api/health", (_req, res) =>
+    res.json({
+      status: "ok",
+      service: "elimupopote-api",
+      database: databaseAvailable ? "connected" : "unavailable",
+    })
+  );
 
   app.use("/api/auth", authRoutes);
   app.use("/api/tenants", tenantsRoutes);
