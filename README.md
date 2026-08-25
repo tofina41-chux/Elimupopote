@@ -11,7 +11,7 @@ Monorepo layout: `server/` (Express + Prisma + Postgres/Supabase) and `client/` 
 - **API**: Express.js + TypeScript
 - **Client**: React 18 + Vite, TypeScript, Mantine UI, react-i18next
 - **Offline**: Dexie.js (IndexedDB) + custom sync queue, vite-plugin-pwa service worker
-- **Auth**: Supabase Auth pattern, mocked as phone-OTP (OTP is always `123456` in this MVP)
+- **Auth**: Supabase Auth pattern, mocked as phone-only login for the MVP
 - **AI**: OpenAI API for course generation, with a deterministic mock fallback so the MVP runs with zero external keys
 
 ## 1. Prerequisites
@@ -36,6 +36,8 @@ Grab the `DATABASE_URL` Supabase prints (or use your hosted project's connection
 cd server
 cp .env.example .env
 # paste your DATABASE_URL into .env; OPENAI_API_KEY is optional (mock used if blank)
+# if you are using the local Supabase CLI, start it first with:
+#   supabase start
 
 npm install
 npm run prisma:migrate     # creates all tables from prisma/schema.prisma
@@ -60,7 +62,7 @@ The client defaults to `VITE_API_URL=http://localhost:4000`; override with a `.e
 
 ## 5. Demo accounts (from the seed script)
 
-All accounts use OTP code **`123456`**.
+Use any of the seeded phone numbers below to log in.
 
 | Role | Phone | Tenant |
 |---|---|---|
