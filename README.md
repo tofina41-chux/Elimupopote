@@ -4,6 +4,14 @@ A multi-tenant, mobile-first, offline-capable corporate LMS MVP for the Kenyan m
 
 Monorepo layout: `server/` (Express + Prisma + Postgres/Supabase) and `client/` (React 18 + Vite PWA).
 
+> **After cloning or pulling:** `node_modules` is gitignored (not committed) in both
+> `client/` and `server/`, so run `npm install` in **both** folders before running
+> anything — a pull that changes dependencies won't install them for you automatically.
+> ```bash
+> cd server && npm install
+> cd ../client && npm install
+> ```
+
 ## Tech stack
 
 - **DB**: PostgreSQL via Supabase (local CLI or hosted project)

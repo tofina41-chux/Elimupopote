@@ -10,6 +10,7 @@ import {
 import {
   generateCourseDraft,
   saveDraftCourse,
+  updateCourse,
   publishCourse,
 } from "../controllers/aiCourseGenerator.controller";
 
@@ -20,6 +21,7 @@ router.use(authenticate, tenantScope);
 // AI generation + persistence — instructor only.
 router.post("/generate", requireRole("INSTRUCTOR"), generateCourseDraft);
 router.post("/", requireRole("INSTRUCTOR"), saveDraftCourse);
+router.patch("/:id", requireRole("INSTRUCTOR"), updateCourse);
 router.patch("/:id/publish", requireRole("INSTRUCTOR"), publishCourse);
 
 // Listing — role-specific views.

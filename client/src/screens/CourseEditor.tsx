@@ -15,7 +15,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { IconArrowLeft, IconInfoCircle, IconSparkles } from "@tabler/icons-react";
+import { IconArrowLeft, IconPlus, IconSparkles, IconTrash } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { apiClient } from "../api/client";
 
@@ -35,65 +35,90 @@ interface Draft {
   title: string;
   description: string;
   learningObjectives: string[];
+  language?: string;
   lessons: DraftLesson[];
 }
 
-interface ExistingCourse {
+interface CourseResponse {
   id: string;
   title: string;
   description: string;
   status: "DRAFT" | "PUBLISHED";
   language: string;
+  learningObjectives: string[];
   lessons: {
     id: string;
     title: string;
     content: string;
-    quiz?: { questions: DraftQuizQuestion[] } | null;
+    quiz?: { questions: { question: string; correctIndex: number; options: { text: string }[] }[] } | null;
   }[];
 }
 
+function emptyLesson(): DraftLesson {
+  return { title: "New lesson", content: "", quiz: [] };
+}
+
 // Handles two routes:
-//   /courses/new             -> AI-generate a draft, let the instructor
-//                                review it, then POST /api/courses to save.
-//   /courses/:courseId/edit  -> the API has no update-course endpoint yet
-//                                (only create + publish), so this shows the
-//                                saved course read-only rather than pretending
-//                                edits would persist. Publishing still works.
+//   /courses/new             -> AI-generate a draft, review/edit it, then
+//                                POST /api/courses to save.
+//   /courses/:courseId/edit  -> loads the saved course into the same
+//                                editable Draft shape and PATCHes it back
+//                                on save (full lesson replacement — see
+//                                updateCourse in aiCourseGenerator.controller.ts).
+// Both routes share one editable form below so instructors get the same
+// editing experience whether they're starting from AI output or refining
+// something they saved earlier.
 export function CourseEditor() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const isEditingExisting = Boolean(courseId);
 
-  // --- "new course" (AI generation) state ---
   const [prompt, setPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [status, setStatus] = useState<"DRAFT" | "PUBLISHED" | null>(null);
   const [saving, setSaving] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
-
-  // --- "existing course" (read-only) state ---
-  const [existing, setExisting] = useState<ExistingCourse | null>(null);
-  const [loadingExisting, setLoadingExisting] = useState(isEditingExisting);
   const [publishing, setPublishing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(isEditingExisting);
 
   useEffect(() => {
     if (!courseId) return;
     apiClient
-      .get(`/api/courses/${courseId}`)
-      .then((res) => setExisting(res.data))
-      .catch(() => setExisting(null))
+      .get<CourseResponse>(`/api/courses/${courseId}`)
+      .then((res) => {
+        const c = res.data;
+        setStatus(c.status);
+        setDraft({
+          title: c.title,
+          description: c.description,
+          learningObjectives: c.learningObjectives ?? [],
+          language: c.language,
+          lessons: c.lessons.map((l) => ({
+            title: l.title,
+            content: l.content,
+            quiz: (l.quiz?.questions ?? []).map((q) => ({
+              question: q.question,
+              correctIndex: q.correctIndex,
+              options: q.options.map((o) => o.text),
+            })),
+          })),
+        });
+      })
+      .catch(() => setError("Couldn't load that course."))
       .finally(() => setLoadingExisting(false));
   }, [courseId]);
 
   async function handleGenerate() {
-    setGenError(null);
+    setError(null);
     setGenerating(true);
     try {
       const { data } = await apiClient.post("/api/courses/generate", { prompt: prompt.trim() });
       setDraft(data.draft);
+      setStatus("DRAFT");
     } catch (err: any) {
-      setGenError(err?.response?.data?.error || t("common.error"));
+      setError(err?.response?.data?.error || t("common.error"));
     } finally {
       setGenerating(false);
     }
@@ -102,28 +127,40 @@ export function CourseEditor() {
   async function handleSave(publishAfter: boolean) {
     if (!draft) return;
     setSaving(true);
+    setError(null);
     try {
-      const { data } = await apiClient.post("/api/courses", draft);
-      if (publishAfter) {
+      const { data } = isEditingExisting
+        ? await apiClient.patch(`/api/courses/${courseId}`, draft)
+        : await apiClient.post("/api/courses", draft);
+
+      if (publishAfter && data.status !== "PUBLISHED") {
+        setPublishing(true);
         await apiClient.patch(`/api/courses/${data.id}/publish`);
       }
       navigate("/instructor");
     } catch {
-      setGenError(t("common.error"));
+      setError(t("common.error"));
     } finally {
       setSaving(false);
+      setPublishing(false);
     }
   }
 
-  async function handlePublishExisting() {
-    if (!existing) return;
-    setPublishing(true);
-    try {
-      await apiClient.patch(`/api/courses/${existing.id}/publish`);
-      navigate("/instructor");
-    } finally {
-      setPublishing(false);
-    }
+  function updateLesson(idx: number, patch: Partial<DraftLesson>) {
+    if (!draft) return;
+    const lessons = [...draft.lessons];
+    lessons[idx] = { ...lessons[idx], ...patch };
+    setDraft({ ...draft, lessons });
+  }
+
+  function addLesson() {
+    if (!draft) return;
+    setDraft({ ...draft, lessons: [...draft.lessons, emptyLesson()] });
+  }
+
+  function removeLesson(idx: number) {
+    if (!draft) return;
+    setDraft({ ...draft, lessons: draft.lessons.filter((_, i) => i !== idx) });
   }
 
   const backButton = (
@@ -138,108 +175,59 @@ export function CourseEditor() {
     </Button>
   );
 
-  // ---------------------------------------------------------------- editing
-  if (isEditingExisting) {
-    if (loadingExisting) {
-      return (
-        <Group justify="center" p="xl">
-          <Loader />
-        </Group>
-      );
-    }
-    if (!existing) {
-      return (
-        <Stack p="md" maw={800}>
-          {backButton}
-          <Alert color="red">Couldn't load that course.</Alert>
-        </Stack>
-      );
-    }
+  if (loadingExisting) {
     return (
-      <Stack p="md" maw={800}>
-        {backButton}
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Title order={2}>{existing.title}</Title>
-            <Text c="dimmed">{existing.description}</Text>
-          </div>
-          <Badge color={existing.status === "PUBLISHED" ? "green" : "gray"}>
-            {existing.status}
-          </Badge>
-        </Group>
-
-        <Alert icon={<IconInfoCircle size={16} />} color="jua" variant="light">
-          Editing course content isn't available yet — this is a read-only view. You can still
-          publish it below.
-        </Alert>
-
-        <Accordion variant="separated">
-          {existing.lessons.map((lesson, idx) => (
-            <Accordion.Item key={lesson.id} value={lesson.id}>
-              <Accordion.Control>
-                {idx + 1}. {lesson.title}
-              </Accordion.Control>
-              <Accordion.Panel>
-                <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-                  {lesson.content}
-                </Text>
-                {lesson.quiz?.questions?.length ? (
-                  <Text size="xs" c="dimmed" mt="sm">
-                    {lesson.quiz.questions.length} quiz question
-                    {lesson.quiz.questions.length === 1 ? "" : "s"}
-                  </Text>
-                ) : null}
-              </Accordion.Panel>
-            </Accordion.Item>
-          ))}
-        </Accordion>
-
-        {existing.status === "DRAFT" && (
-          <Button onClick={handlePublishExisting} loading={publishing} w="fit-content">
-            {t("instructor.publish")}
-          </Button>
-        )}
-      </Stack>
+      <Group justify="center" p="xl">
+        <Loader />
+      </Group>
     );
   }
 
-  // ------------------------------------------------------------- new course
   return (
     <Stack p="md" maw={800}>
       {backButton}
-      <Title order={2}>{t("instructor.title")}</Title>
 
-      {!draft && (
-        <Card withBorder padding="lg">
-          <Stack gap="sm">
-            <Textarea
-              label={t("instructor.promptLabel")}
-              placeholder={t("instructor.promptPlaceholder")}
-              value={prompt}
-              onChange={(e) => setPrompt(e.currentTarget.value)}
-              autosize
-              minRows={2}
-            />
-            {genError && (
-              <Alert color="red" variant="light">
-                {genError}
-              </Alert>
-            )}
-            <Button
-              leftSection={<IconSparkles size={16} />}
-              onClick={handleGenerate}
-              loading={generating}
-              disabled={prompt.trim().length < 3}
-              w="fit-content"
-            >
-              {generating ? t("instructor.generating") : t("instructor.generate")}
-            </Button>
-          </Stack>
-        </Card>
+      {!isEditingExisting && !draft && (
+        <>
+          <Title order={2}>{t("instructor.title")}</Title>
+          <Card withBorder padding="lg">
+            <Stack gap="sm">
+              <Textarea
+                label={t("instructor.promptLabel")}
+                placeholder={t("instructor.promptPlaceholder")}
+                value={prompt}
+                onChange={(e) => setPrompt(e.currentTarget.value)}
+                autosize
+                minRows={2}
+              />
+              {error && (
+                <Alert color="red" variant="light">
+                  {error}
+                </Alert>
+              )}
+              <Button
+                leftSection={<IconSparkles size={16} />}
+                onClick={handleGenerate}
+                loading={generating}
+                disabled={prompt.trim().length < 3}
+                w="fit-content"
+              >
+                {generating ? t("instructor.generating") : t("instructor.generate")}
+              </Button>
+            </Stack>
+          </Card>
+        </>
       )}
 
       {draft && (
         <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <Title order={2}>{isEditingExisting ? draft.title || "Edit course" : "Review draft"}</Title>
+            {status && (
+              <Badge color={status === "PUBLISHED" ? "green" : "gray"}>{status}</Badge>
+            )}
+          </Group>
+
           <Card withBorder padding="lg">
             <Stack gap="sm">
               <TextInput
@@ -257,31 +245,23 @@ export function CourseEditor() {
             </Stack>
           </Card>
 
-          <Accordion variant="separated" defaultValue={draft.lessons[0]?.title}>
+          <Accordion variant="separated">
             {draft.lessons.map((lesson, lessonIdx) => (
-              <Accordion.Item key={lessonIdx} value={lesson.title || `lesson-${lessonIdx}`}>
+              <Accordion.Item key={lessonIdx} value={`lesson-${lessonIdx}`}>
                 <Accordion.Control>
-                  {lessonIdx + 1}. {lesson.title}
+                  {lessonIdx + 1}. {lesson.title || "Untitled lesson"}
                 </Accordion.Control>
                 <Accordion.Panel>
                   <Stack gap="md">
                     <TextInput
                       label="Lesson title"
                       value={lesson.title}
-                      onChange={(e) => {
-                        const lessons = [...draft.lessons];
-                        lessons[lessonIdx] = { ...lesson, title: e.currentTarget.value };
-                        setDraft({ ...draft, lessons });
-                      }}
+                      onChange={(e) => updateLesson(lessonIdx, { title: e.currentTarget.value })}
                     />
                     <Textarea
                       label="Content"
                       value={lesson.content}
-                      onChange={(e) => {
-                        const lessons = [...draft.lessons];
-                        lessons[lessonIdx] = { ...lesson, content: e.currentTarget.value };
-                        setDraft({ ...draft, lessons });
-                      }}
+                      onChange={(e) => updateLesson(lessonIdx, { content: e.currentTarget.value })}
                       autosize
                       minRows={4}
                     />
@@ -313,28 +293,52 @@ export function CourseEditor() {
                         ))}
                       </Stack>
                     )}
+
+                    <Button
+                      size="xs"
+                      color="red"
+                      variant="subtle"
+                      leftSection={<IconTrash size={14} />}
+                      onClick={() => removeLesson(lessonIdx)}
+                      w="fit-content"
+                    >
+                      {t("instructor.removeLesson")}
+                    </Button>
                   </Stack>
                 </Accordion.Panel>
               </Accordion.Item>
             ))}
           </Accordion>
 
-          {genError && (
+          <Button
+            variant="light"
+            leftSection={<IconPlus size={16} />}
+            onClick={addLesson}
+            w="fit-content"
+          >
+            {t("instructor.addLesson")}
+          </Button>
+
+          {error && (
             <Alert color="red" variant="light">
-              {genError}
+              {error}
             </Alert>
           )}
 
           <Group>
-            <Button variant="light" onClick={() => setDraft(null)}>
-              Discard &amp; regenerate
-            </Button>
-            <Button variant="default" onClick={() => handleSave(false)} loading={saving}>
+            {!isEditingExisting && (
+              <Button variant="light" color="red" onClick={() => setDraft(null)}>
+                Discard &amp; regenerate
+              </Button>
+            )}
+            <Button variant="default" onClick={() => handleSave(false)} loading={saving && !publishing}>
               {t("instructor.save")}
             </Button>
-            <Button onClick={() => handleSave(true)} loading={saving}>
-              {t("instructor.publish")}
-            </Button>
+            {status !== "PUBLISHED" && (
+              <Button onClick={() => handleSave(true)} loading={saving && publishing}>
+                {t("instructor.publish")}
+              </Button>
+            )}
           </Group>
         </Stack>
       )}
