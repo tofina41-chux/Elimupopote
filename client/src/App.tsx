@@ -11,9 +11,22 @@ import { setAppLanguage } from "./i18n/i18n";
 
 import { Login } from "./screens/Login";
 import { AdminDashboard } from "./screens/AdminDashboard";
-import { CourseBuilder } from "./screens/CourseBuilder";
-import { LearnerCourseView } from "./screens/LearnerCourseView";
+import { InstructorDashboard } from "./screens/InstructorDashboard";
+import { LearnerDashboard } from "./screens/LearnerDashboard";
 import { AnalyticsDashboard } from "./screens/AnalyticsDashboard";
+
+// Sends each role to their own home screen after login.
+function HomeRedirect() {
+  const { user } = useAuthContext();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === "SUPERADMIN" || user.role === "TENANT_ADMIN")
+    return <Navigate to="/admin" replace />;
+  if (user.role === "INSTRUCTOR")
+    return <Navigate to="/instructor" replace />;
+  if (user.role === "LEARNER")
+    return <Navigate to="/learner" replace />;
+  return <Navigate to="/login" replace />;
+}
 
 function Shell() {
   const { t } = useTranslation();
@@ -47,29 +60,18 @@ function Shell() {
 
       <AppShell.Main>
         <Routes>
+          {/* Public */}
           <Route path="/login" element={<Login />} />
 
+          {/* Smart home redirect — sends each role to their own page */}
+          <Route path="/" element={<HomeRedirect />} />
+
+          {/* Superadmin + Tenant Admin */}
           <Route
-            path="/"
+            path="/admin"
             element={
               <ProtectedRoute allow={["SUPERADMIN", "TENANT_ADMIN"]}>
                 <AdminDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/courses/new"
-            element={
-              <ProtectedRoute allow={["INSTRUCTOR"]}>
-                <CourseBuilder />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/courses/:courseId"
-            element={
-              <ProtectedRoute allow={["LEARNER"]}>
-                <LearnerCourseView />
               </ProtectedRoute>
             }
           />
@@ -78,6 +80,50 @@ function Shell() {
             element={
               <ProtectedRoute allow={["TENANT_ADMIN"]}>
                 <AnalyticsDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Instructor */}
+          <Route
+            path="/instructor"
+            element={
+              <ProtectedRoute allow={["INSTRUCTOR"]}>
+                <InstructorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courses/new"
+            element={
+              <ProtectedRoute allow={["INSTRUCTOR"]}>
+                <InstructorDashboard.tsx />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courses/:courseId/edit"
+            element={
+              <ProtectedRoute allow={["INSTRUCTOR"]}>
+                <InstructorDashboard.tsx />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Learner */}
+          <Route
+            path="/learner"
+            element={
+              <ProtectedRoute allow={["LEARNER"]}>
+                <LearnerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courses/:courseId"
+            element={
+              <ProtectedRoute allow={["LEARNER"]}>
+                <LearnerDashboard.tsxourseView />
               </ProtectedRoute>
             }
           />
