@@ -18,7 +18,9 @@ async function getOverview(req, res) {
     ]);
     const avgCompletionPct = progressRows.length === 0
         ? 0
-        : Math.round((progressRows.filter((p) => p.completed).length / progressRows.length) * 100);
+        : Math.round((progressRows.filter((progress) => progress.completed).length /
+            progressRows.length) *
+            100);
     return res.json({ totalLearners, totalCourses, avgCompletionPct });
 }
 // ============================================================================
@@ -64,17 +66,17 @@ async function getAtRiskLearners(req, res) {
         select: { id: true, fullName: true, phone: true },
     });
     const atRisk = [
-        ...staleLearners.map((l) => ({
-            id: l.id,
-            fullName: l.fullName,
-            phone: l.phone,
-            lastActivity: l.lastActivity,
+        ...staleLearners.map((learner) => ({
+            id: learner.id,
+            fullName: learner.fullName,
+            phone: learner.phone,
+            lastActivity: learner.lastActivity,
             reason: "inactive_7_days",
         })),
-        ...neverStarted.map((l) => ({
-            id: l.id,
-            fullName: l.fullName,
-            phone: l.phone,
+        ...neverStarted.map((learner) => ({
+            id: learner.id,
+            fullName: learner.fullName,
+            phone: learner.phone,
             lastActivity: null,
             reason: "never_started",
         })),

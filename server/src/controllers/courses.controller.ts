@@ -28,7 +28,7 @@ export async function listInstructorCourses(req: Request, res: Response) {
 }
 
 // GET /api/courses/published  (learner: only PUBLISHED courses they're enrolled in)
-export async function listLearnerCourses(req: Request, res: Response) {
+export async function listLearnerDashboard.tsxourses(req: Request, res: Response) {
   const courses = await prisma.course.findMany({
     where: {
       tenantId: req.tenantId!,

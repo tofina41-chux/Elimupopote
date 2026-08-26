@@ -1,11 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.prisma = void 0;
-// Singleton Prisma client. Importing this file anywhere always returns the
-// same client instance, which is important in dev (ts-node-dev / nodemon
-// hot-reload) to avoid exhausting Postgres connections.
+exports.prisma = exports.databaseAvailable = void 0;
 const client_1 = require("@prisma/client");
-exports.prisma = global.__prisma ?? new client_1.PrismaClient();
+const extension_accelerate_1 = require("@prisma/extension-accelerate");
+exports.databaseAvailable = Boolean(process.env.DATABASE_URL);
+exports.prisma = global.__prisma ??
+    new client_1.PrismaClient({
+        datasourceUrl: process.env.DATABASE_URL,
+    }).$extends((0, extension_accelerate_1.withAccelerate)());
 if (process.env.NODE_ENV !== "production") {
     global.__prisma = exports.prisma;
 }
