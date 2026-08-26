@@ -14,6 +14,8 @@ import { AdminDashboard } from "./screens/AdminDashboard";
 import { InstructorDashboard } from "./screens/InstructorDashboard";
 import { LearnerDashboard } from "./screens/LearnerDashboard";
 import { AnalyticsDashboard } from "./screens/AnalyticsDashboard";
+import { CourseEditor } from "./screens/CourseEditor";
+import { CourseView } from "./screens/CourseView";
 
 // Sends each role to their own home screen after login.
 function HomeRedirect() {
@@ -97,7 +99,7 @@ function Shell() {
             path="/courses/new"
             element={
               <ProtectedRoute allow={["INSTRUCTOR"]}>
-                <InstructorDashboard.tsx />
+                <CourseEditor />
               </ProtectedRoute>
             }
           />
@@ -105,7 +107,7 @@ function Shell() {
             path="/courses/:courseId/edit"
             element={
               <ProtectedRoute allow={["INSTRUCTOR"]}>
-                <InstructorDashboard.tsx />
+                <CourseEditor />
               </ProtectedRoute>
             }
           />
@@ -123,7 +125,7 @@ function Shell() {
             path="/courses/:courseId"
             element={
               <ProtectedRoute allow={["LEARNER"]}>
-                <LearnerDashboard.tsxourseView />
+                <CourseView />
               </ProtectedRoute>
             }
           />

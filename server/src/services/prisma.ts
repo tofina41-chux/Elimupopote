@@ -14,3 +14,8 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") {
   global.__prisma = prisma;
 }
+
+// Simple presence check used by the /api/health route. This does not verify
+// live connectivity to the database — just that a connection string was
+// configured — so a misbehaving DB can still report "connected" here.
+export const databaseAvailable = Boolean(process.env.DATABASE_URL);

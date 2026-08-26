@@ -94,7 +94,7 @@ export const db = new ElimuPopoteDB();
 // ============================================================================
 // cacheCourseForOffline
 // ----------------------------------------------------------------------------
-// Called the first time a learner opens a course (see LearnerDashboard.tsxourseView.tsx).
+// Called the first time a learner opens a course (see screens/CourseView.tsx).
 // Downloads the full nested course detail from the API and flattens it into
 // the `courses` and `lessons` tables so the learner can keep studying with
 // zero connectivity from this point forward.

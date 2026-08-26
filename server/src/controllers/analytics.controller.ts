@@ -18,7 +18,11 @@ export async function getOverview(req: Request, res: Response) {
   const avgCompletionPct =
     progressRows.length === 0
       ? 0
-      : Math.round((progressRows.filter((p) => p.completed).length / progressRows.length) * 100);
+      : Math.round(
+          (progressRows.filter((p: { completed: boolean }) => p.completed).length /
+            progressRows.length) *
+            100
+        );
 
   return res.json({ totalLearners, totalCourses, avgCompletionPct });
 }
@@ -70,15 +74,18 @@ export async function getAtRiskLearners(req: Request, res: Response) {
     select: { id: true, fullName: true, phone: true },
   });
 
+  type StaleLearner = { id: string; fullName: string; phone: string; lastActivity: Date };
+  type NeverStartedLearner = { id: string; fullName: string; phone: string };
+
   const atRisk = [
-    ...staleLearners.map((l) => ({
+    ...staleLearners.map((l: StaleLearner) => ({
       id: l.id,
       fullName: l.fullName,
       phone: l.phone,
       lastActivity: l.lastActivity,
       reason: "inactive_7_days" as const,
     })),
-    ...neverStarted.map((l) => ({
+    ...neverStarted.map((l: NeverStartedLearner) => ({
       id: l.id,
       fullName: l.fullName,
       phone: l.phone,

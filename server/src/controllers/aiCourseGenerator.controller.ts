@@ -8,7 +8,7 @@ import { generateCourse, detectLanguage } from "../services/openai.service";
 // Instructor-only. Takes a free-text prompt (English or Swahili), sends it
 // to the AI service (real OpenAI call or local mock — see
 // services/openai.service.ts), and returns a draft course shape that the
-// InstructorDashboard.tsx screen renders as an editable form. Nothing is persisted
+// Instructor screen renders as an editable form. Nothing is persisted
 // here — persistence happens in saveDraftCourse() below, once the instructor
 // has reviewed/edited the AI output. This separation lets instructors
 // regenerate freely without creating orphan DB rows.
